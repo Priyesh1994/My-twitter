@@ -60,7 +60,10 @@ class SiteController extends Controller
      */
     public function actionIndex()
     {
-        return $this->render('index');
+        if (Yii::$app->user->isGuest)
+            return $this->render('index');
+        else
+            return $this->redirect(['microposts/index']);
     }
 
     /**
@@ -70,6 +73,7 @@ class SiteController extends Controller
      */
     public function actionLogin()
     {
+
         if (!Yii::$app->user->isGuest) {
             return $this->goHome();
         }
@@ -121,5 +125,10 @@ class SiteController extends Controller
     public function actionAbout()
     {
         return $this->render('about');
+    }
+
+    public function actionSay($message = "Hello")
+    {
+        return $this->render('say',['message'=>$message]);
     }
 }
