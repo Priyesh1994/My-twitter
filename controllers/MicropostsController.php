@@ -2,6 +2,7 @@
 
 namespace app\controllers;
 
+use app\models\Relationships;
 use Yii;
 use app\models\Microposts;
 use yii\filters\AccessControl;
@@ -47,11 +48,40 @@ class MicropostsController extends Controller
     public function actionIndex()
     {
         $model = new Microposts();
+        $userId = Yii::$app->user->identity->getId();
+
+        $ids = Relationships::find()->select('followed_id')->where(['follower_id' => $userId])->all();
+        $newIds = array();
+        foreach ($ids as $id)
+            array_push($newIds,$id->followed_id);
+
+        $rows = (new \yii\db\Query())
+            ->select(['userName', 'content'])
+            ->from('users')
+            ->join('INNER JOIN', 'microposts', 'users.userId = microposts.userId')
+            ->where(['or', 'users.userId=:userId', ['users.userId' => $newIds]])
+            ->addParams([':userId' => $userId])
+            ->orderBy(['created_at' => SORT_DESC])
+            ->all();
+
+        $numberOfMicroposts = Microposts::find()->where(['userId'=>$userId])->count();
+
+        $row_following = Relationships::find()->where(['follower_id'=>$userId])->count();
+
+        $row_followed = Relationships::find()->where(['followed_id'=>$userId])->count();
 
         //For micropost creation
         if($model->load(Yii::$app->request->post()) && $model->save())
-            return $this->render('index',['model' => $model]);
-        return $this->render('index',['model' => $model]);
+            return $this->render('index',['model' => $model,
+                'rows' => $rows,
+                'numberOfMicroposts' => $numberOfMicroposts,
+                'row_following' => $row_following,
+                'row_followed' => $row_followed]);
+
+        return $this->render('index',['model' => $model,'rows' => $rows,
+            'numberOfMicroposts' => $numberOfMicroposts,
+            'row_following' => $row_following,
+            'row_followed' => $row_followed]);
         /*else
             return $this->render('index',['model' => $model]);*/
     }
@@ -76,13 +106,6 @@ class MicropostsController extends Controller
     public function actionCreate()
     {
         $model = new Microposts();
-        /*if ($model->load(Yii::$app->request->post()) && $model->save())
-            {   return $this->redirect(['view', 'id' => $model->Id]);
-        } else {
-            return $this->render('create', [
-                'model' => $model,
-            ]);
-        }*/
         return $this->render('index',['model' => $model]);
     }
 

@@ -2,6 +2,8 @@
 
 namespace app\controllers;
 
+use app\models\Microposts;
+use app\models\Relationships;
 use Yii;
 use app\models\Users;
 use yii\filters\AccessControl;
@@ -49,10 +51,12 @@ class UsersController extends Controller
     {
         $searchModel = new uersSearch();
         $dataProvider = $searchModel->search(Yii::$app->request->queryParams);
-
+        $checkAdminArray = Users::find()->select('admin')->where(['userId'=>Yii::$app->user->getId()])->one();
+        $checkAdmin = $checkAdminArray->admin;
         return $this->render('index', [
             'searchModel' => $searchModel,
             'dataProvider' => $dataProvider,
+            'checkAdmin' => $checkAdmin
         ]);
     }
 
@@ -63,8 +67,31 @@ class UsersController extends Controller
      */
     public function actionView($id)
     {
+        $userId = Yii::$app->user->getId();
+        $followCheck = Relationships::find()->where("follower_id = '$userId' and followed_id = '$id'")->count();
+
+        $rows = (new \yii\db\Query())
+            ->select(['userName', 'content'])
+            ->from('users')
+            ->join('INNER JOIN', 'microposts', 'users.userId = microposts.userId')
+            ->where('users.userId=:profileId')
+            ->addParams([':profileId' => $id])
+            ->orderBy(['created_at' => SORT_DESC])
+            ->all();
+
+        $numberOfMicroposts = Microposts::find()->where(['userId'=>$id])->count();
+
+        $row_following = Relationships::find()->where(['follower_id'=>$id])->count();
+
+        $row_followed = Relationships::find()->where(['followed_id'=>$id])->count();
+
         return $this->render('view', [
             'model' => $this->findModel($id),
+            'followCheck' => $followCheck,
+            'rows'=>$rows,
+            'numberOfMicroposts' => $numberOfMicroposts,
+            'row_following' => $row_following,
+            'row_followed' => $row_followed
         ]);
     }
 
@@ -89,25 +116,20 @@ class UsersController extends Controller
     public function actionFollow()
     {
         $userId = Yii::$app->user->identity->getId();
-        $insertRelationship = Yii::$app->db->createCommand()->insert('relationships',[
-            'follower_id' => $userId,
-            'followed_id' => $_GET['followedId']
-        ])->execute();
-        return $this->render('view', [
-            'model' => $this->findModel($_GET['followedId']),
-        ]);
+        $relation = new Relationships();
+        $relation->follower_id = $userId;
+        $relation->followed_id = $_GET['followedId'];
+        $relation->save();
+
+        return $this->redirect(['view','id' =>$_GET['followedId']]);
     }
 
     public function actionUnfollow()
     {
         $userId = Yii::$app->user->identity->getId();
-        $deleteRelationship = Yii::$app->db->createCommand()->delete('relationships',[
-            'follower_id' => $userId,
-            'followed_id' => $_GET['followedId']
-        ])->execute();
-        return $this->render('view', [
-            'model' => $this->findModel($_GET['followedId']),
-        ]);
+        $followedId = $_GET['followedId'];
+        Relationships::deleteAll("follower_id = '$userId' and followed_id = '$followedId'");
+        return $this->redirect(['view','id' =>$_GET['followedId']]);
     }
 
     /**
@@ -143,12 +165,8 @@ class UsersController extends Controller
      */
     public function actionDelete($id)
     {
-        $checkAdmin = (new \yii\db\Query())
-            ->select(['admin'])
-            ->from('users')
-            ->where(['userId' => Yii::$app->user->identity->getId()])
-            ->all();
-        if ($checkAdmin[0]['admin'])
+        $checkAdminArray = Users::find()->select('admin')->where(['userId'=>Yii::$app->user->getId()])->one();
+        if ($checkAdminArray->admin)
             $this->findModel($id)->delete();
 
         return $this->redirect(['index']);

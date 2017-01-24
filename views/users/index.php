@@ -9,11 +9,6 @@ use yii\grid\GridView;
 
 $this->title = 'Users';
 $this->params['breadcrumbs'][] = $this->title;
-$checkAdmin = (new \yii\db\Query())
-    ->select(['admin'])
-    ->from('users')
-    ->where(['userId' => Yii::$app->user->identity->getId()])
-    ->all();
 ?>
 <div class="users-index">
 
@@ -31,7 +26,7 @@ $checkAdmin = (new \yii\db\Query())
              'header' => 'Action',
              'template' => '{view} {delete}',
              'buttons' => [
-                     'delete' => $checkAdmin[0]['admin'] ? (function($url,$model,$checkAdmin){
+                     'delete' => $checkAdmin ? (function($url,$model,$checkAdmin){
                          return Html::a(
                              '<span class="glyphicon glyphicon-trash">',['delete','id'=>$model->userId],['onClick'=>"javascript: return confirm('Please confirm deletion..');"]);
                      }):(function($model) {
