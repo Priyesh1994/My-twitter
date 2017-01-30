@@ -15,6 +15,7 @@ use yii\filters\VerbFilter;
  */
 class MicropostsController extends Controller
 {
+    public $rows,$numberOfMicroposts,$row_following,$row_followed;
     /**
      * @inheritdoc
      */
@@ -23,10 +24,10 @@ class MicropostsController extends Controller
         return [
             'access' => [
                 'class' => AccessControl::className(),
-                'only' => ['index','update','create','delete'],
+                'only' => ['index','update','create','delete','ajax-index'],
                 'rules' => [
                     [
-                        'actions' => ['index','update','create','delete'],
+                        'actions' => ['index','update','create','delete','ajax-index'],
                         'allow' => true,
                         'roles' => ['@'],
                     ],
@@ -41,6 +42,36 @@ class MicropostsController extends Controller
         ];
     }
 
+    public  function reloadMicroRows()
+    {
+        $userId = Yii::$app->user->identity->getId();
+        $ids = Relationships::find()->select('followed_id')->where(['follower_id' => $userId])->all();
+        $newIds = array();
+        foreach ($ids as $id)
+            array_push($newIds,$id->followed_id);
+
+        return (new \yii\db\Query())
+            ->select(['userName', 'content'])
+            ->from('users')
+            ->join('INNER JOIN', 'microposts', 'users.userId = microposts.userId')
+            ->where(['or', 'users.userId=:userId', ['users.userId' => $newIds]])
+            ->addParams([':userId' => $userId])
+            ->orderBy(['created_at' => SORT_DESC])
+            ->all();
+    }
+
+    public function actionAjaxIndex()
+    {
+        $request = Yii::$app->request;
+        $userId = Yii::$app->user->identity->getId();
+        $content = $request->post('content');
+        $micropost = new Microposts();
+        $micropost->userId = $userId;
+        $micropost->content = $content;
+        if($micropost->save(false))
+            echo $content;
+    }
+
     /**
      * Lists all Microposts models.
      * @return mixed
@@ -50,33 +81,30 @@ class MicropostsController extends Controller
         $model = new Microposts();
         $userId = Yii::$app->user->identity->getId();
 
-        $ids = Relationships::find()->select('followed_id')->where(['follower_id' => $userId])->all();
-        $newIds = array();
-        foreach ($ids as $id)
-            array_push($newIds,$id->followed_id);
+        //For micropost creation
+        if($model->load(Yii::$app->request->post()) && $model->save()) {
+            $rows = $this->reloadMicroRows();
 
-        $rows = (new \yii\db\Query())
-            ->select(['userName', 'content'])
-            ->from('users')
-            ->join('INNER JOIN', 'microposts', 'users.userId = microposts.userId')
-            ->where(['or', 'users.userId=:userId', ['users.userId' => $newIds]])
-            ->addParams([':userId' => $userId])
-            ->orderBy(['created_at' => SORT_DESC])
-            ->all();
+            $numberOfMicroposts = Microposts::find()->where(['userId'=>$userId])->count();
+
+            $row_following = Relationships::find()->where(['follower_id'=>$userId])->count();
+
+            $row_followed = Relationships::find()->where(['followed_id'=>$userId])->count();
+
+            return $this->render('index', ['model' => $model,
+                'rows' => $rows,
+                'numberOfMicroposts' => $numberOfMicroposts,
+                'row_following' => $row_following,
+                'row_followed' => $row_followed]);
+        }
+
+        $rows = $this->reloadMicroRows();
 
         $numberOfMicroposts = Microposts::find()->where(['userId'=>$userId])->count();
 
         $row_following = Relationships::find()->where(['follower_id'=>$userId])->count();
 
         $row_followed = Relationships::find()->where(['followed_id'=>$userId])->count();
-
-        //For micropost creation
-        if($model->load(Yii::$app->request->post()) && $model->save())
-            return $this->render('index',['model' => $model,
-                'rows' => $rows,
-                'numberOfMicroposts' => $numberOfMicroposts,
-                'row_following' => $row_following,
-                'row_followed' => $row_followed]);
 
         return $this->render('index',['model' => $model,'rows' => $rows,
             'numberOfMicroposts' => $numberOfMicroposts,
@@ -105,8 +133,7 @@ class MicropostsController extends Controller
      */
     public function actionCreate()
     {
-        $model = new Microposts();
-        return $this->render('index',['model' => $model]);
+        return $this->render('index');
     }
 
     /**
